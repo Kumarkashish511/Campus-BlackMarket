@@ -1,0 +1,26 @@
+# Node dependency manifest (human-readable)
+# Generated from project package files on 2025-11-06
+# This is a human-readable manifest listing Node dependencies used by the project.
+# To actually install packages, run `npm install` inside the specific package folder (for example `api` or `Thapar`).
+
+# --- api (backend) ---
+express@^5.1.0
+
+# --- Thapar (frontend) ---
+# runtime dependencies
+@supabase/supabase-js@^2.57.4
+lucide-react@^0.344.0
+react@^18.3.1
+react-dom@^18.3.1
+
+# dev / build dependencies used by Thapar (for local development)
+vite@^5.4.2
+typescript@^5.5.3
+tailwindcss@^3.4.18
+postcss@^8.5.6
+autoprefixer@^10.4.21
+@vitejs/plugin-react@^4.3.1
+
+# Notes:
+# - This file is for documentation and reproducibility only. Use the folder-local package.json files
+#   and run `npm install` in each folder to install packages (e.g. `cd api && npm install`).
