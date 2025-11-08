@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Star, Package, Heart, Edit2, Save } from 'lucide-react';
+import { ProductModal } from '../components/Products/ProductModal';
+import { useNavigate } from 'react-router-dom';
 import type { Database } from '../lib/database.types';
 
 type Product = Database['public']['Tables']['products']['Row'];
@@ -26,11 +28,70 @@ export function ProfilePage() {
     phone: profile?.phone || '',
     hostel_block: profile?.hostel_block || '',
   });
+  const [pendingTransactions, setPendingTransactions] = useState<any[]>([]);
+
+  const fetchPendingTransactions = async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('transactions')
+      .select(`
+        *,
+        product:products(*),
+        buyer:profiles!transactions_buyer_id_fkey(*)
+      `)
+      .eq('seller_id', user.id)
+      .eq('payment_status', 'pending');
+
+    if (!error && data) {
+      setPendingTransactions(data);
+    }
+  };
+
+  const handleConfirmPayment = async (transactionId: string, productId: string, markAsSold: boolean) => {
+    try {
+      // Update transaction status
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .update({ payment_status: 'completed' })
+        .eq('id', transactionId);
+
+      if (transactionError) throw transactionError;
+
+      // Mark product as sold if seller chooses to
+      if (markAsSold) {
+        const { error: productError } = await supabase
+          .from('products')
+          .update({ status: 'sold' })
+          .eq('id', productId);
+
+        if (productError) throw productError;
+      }
+
+      // Refresh pending transactions
+      fetchPendingTransactions();
+    } catch (error) {
+      console.error('Error confirming payment:', error);
+    }
+  };
+  // Product detail modal state
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [showProductModal, setShowProductModal] = useState(false);
+
+  const openProductModal = (product: Product) => {
+    setSelectedProduct(product);
+    setShowProductModal(true);
+  };
+
+  const closeProductModal = () => {
+    setShowProductModal(false);
+    setSelectedProduct(null);
+  };
 
   useEffect(() => {
     if (user) {
       fetchMyProducts();
       fetchWishlist();
+      fetchPendingTransactions();
     }
   }, [user]);
 
@@ -56,6 +117,8 @@ export function ProfilePage() {
         .from('products')
         .select('*')
         .eq('seller_id', user.id)
+        // only show non-deleted products; you can adjust to include sold if you want
+        .neq('status', 'deleted')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -75,7 +138,9 @@ export function ProfilePage() {
         .eq('user_id', user.id);
 
       if (error) throw error;
-      setWishlist(data?.map(w => (w as { product: Product }).product) || []);
+      // map and filter out null/missing products (e.g., deleted by seller)
+      const products = (data || []).map((w: any) => w.product).filter((p: any) => p && p.id);
+      setWishlist(products as Product[]);
     } catch (error) {
       console.error('Error fetching wishlist:', error);
     }
@@ -93,6 +158,7 @@ export function ProfilePage() {
           seller_id,
           amount,
           created_at,
+          payment_status,
           product:products(*),
           seller:profiles!transactions_seller_id_fkey(
             id,
@@ -106,7 +172,11 @@ export function ProfilePage() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setPurchases(data || []);
+      // Only show transactions with completed payment status
+      const completedTransactions = (data || []).filter(
+        transaction => transaction.payment_status === 'completed'
+      );
+      setPurchases(completedTransactions);
       // load which of these transactions are already reviewed by this buyer
       fetchReviewedTransactions();
     } catch (error) {
@@ -169,9 +239,44 @@ export function ProfilePage() {
         .eq('id', productId);
 
       if (error) throw error;
-      fetchMyProducts();
+      // refresh both lists
+      await fetchMyProducts();
+      await fetchWishlist();
     } catch (error) {
       console.error('Error deleting product:', error);
+    }
+  };
+
+  const navigate = useNavigate();
+
+  const handleInitiateTransaction = async (productId: string, sellerId: string, amount: number) => {
+    if (!user) {
+      alert('Please sign in to buy');
+      return;
+    }
+
+    try {
+      const { data, error } = await (supabase as any)
+        .from('transactions')
+        .insert({
+          product_id: productId,
+          buyer_id: user.id,
+          seller_id: sellerId,
+          amount,
+          status: 'pending',
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      // refresh purchases and close modal
+      await fetchPurchases();
+        // return success to caller (modal will close on success)
+        return data;
+    } catch (err) {
+      console.error('Error initiating transaction:', err);
+        // propagate error so caller (ProductModal) can show a friendly message
+        throw err;
     }
   };
 
@@ -355,6 +460,67 @@ export function ProfilePage() {
             </div>
           )}
 
+          {showProductModal && selectedProduct && (
+            <ProductModal
+              product={selectedProduct}
+              onClose={async () => {
+                closeProductModal();
+                // refresh lists to reflect any wishlist or status changes made inside the modal
+                await fetchMyProducts();
+                await fetchWishlist();
+              }}
+              onInitiateTransaction={handleInitiateTransaction}
+              onEditSuccess={async () => {
+                await fetchMyProducts();
+                await fetchWishlist();
+              }}
+            />
+          )}
+
+          {pendingTransactions.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                Pending Payments
+              </h3>
+              <div className="space-y-4">
+                {pendingTransactions.map((transaction) => (
+                  <div
+                    key={transaction.id}
+                    className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border border-gray-200 dark:border-gray-700"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 className="font-medium text-gray-900 dark:text-white">
+                          {transaction.product.title}
+                        </h4>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Buyer: {transaction.buyer.full_name}
+                        </p>
+                      </div>
+                      <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                        ₹{transaction.amount}
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => handleConfirmPayment(transaction.id, transaction.product_id, true)}
+                        className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700"
+                      >
+                        Confirm & Mark as Sold
+                      </button>
+                      <button
+                        onClick={() => handleConfirmPayment(transaction.id, transaction.product_id, false)}
+                        className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700"
+                      >
+                        Confirm Payment Only
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -433,7 +599,7 @@ export function ProfilePage() {
           <div className="p-6">
             {activeTab === 'listings' && (
               <div className="space-y-4">
-                {myProducts.length === 0 ? (
+                  {myProducts.length === 0 ? (
                   <div className="text-center py-12">
                     <Package className="w-12 h-12 mx-auto text-gray-400 mb-3" />
                     <p className="text-gray-500 dark:text-gray-400">No listings yet</p>
@@ -442,7 +608,8 @@ export function ProfilePage() {
                   myProducts.map((product) => (
                     <div
                       key={product.id}
-                      className="flex gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
+                      onClick={() => openProductModal(product)}
+                      className="flex gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 transition-colors cursor-pointer"
                     >
                       <img
                         src={product.images[0] || 'https://images.pexels.com/photos/3846490/pexels-photo-3846490.jpeg'}
@@ -466,7 +633,7 @@ export function ProfilePage() {
                         </div>
                       </div>
                       <button
-                        onClick={() => handleDeleteProduct(product.id)}
+                        onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id); }}
                         className="px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                       >
                         Delete
@@ -494,7 +661,8 @@ export function ProfilePage() {
                       return (
                         <div
                           key={prod.id}
-                          className="flex gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
+                          onClick={() => openProductModal(prod)}
+                          className="flex gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 transition-colors cursor-pointer"
                         >
                           <img
                             src={image}

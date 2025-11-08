@@ -32,10 +32,11 @@ const CONDITIONS = [
 ];
 
 export function CreateProduct({ onClose, onSuccess, product }: CreateProductProps) {
-  const { user } = useAuth();
+  const { user, isProfileComplete } = useAuth();
   const isEdit = !!product;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
     title: product?.title || '',
     description: product?.description || '',
@@ -65,10 +66,54 @@ export function CreateProduct({ onClose, onSuccess, product }: CreateProductProp
     return data.publicUrl;
   };
 
+  // Validate form data
+  const validateForm = () => {
+    const errors: Record<string, string> = {};
+    
+    if (!formData.title.trim()) {
+      errors.title = 'Title is required';
+    }
+    
+    if (!formData.description.trim()) {
+      errors.description = 'Description is required';
+    }
+    
+    if (!formData.price || parseFloat(formData.price) <= 0) {
+      errors.price = 'Valid price is required';
+    }
+    
+    if (!formData.category) {
+      errors.category = 'Category is required';
+    }
+    
+    if (!formData.condition) {
+      errors.condition = 'Condition is required';
+    }
+    
+    if (!isEdit && !imageFile && !formData.imageUrl) {
+      errors.image = 'Image is required';
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   // ✅ Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+
+    // Check profile completeness
+    if (!isProfileComplete) {
+      setError('Please complete your profile before creating a listing. Add your phone number and hostel block in your profile.');
+      return;
+    }
+
+    // Validate form
+    if (!validateForm()) {
+      setError('Please fill in all required fields');
+      return;
+    }
 
     setError('');
     setLoading(true);
@@ -153,6 +198,11 @@ export function CreateProduct({ onClose, onSuccess, product }: CreateProductProp
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="p-4 bg-red-50 dark:bg-red-900/50 text-red-600 dark:text-red-400 rounded-lg">
+              {error}
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium mb-1">Title</label>
             <input

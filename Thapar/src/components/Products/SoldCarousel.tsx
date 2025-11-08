@@ -56,29 +56,11 @@ export function SoldCarousel() {
     <div className="mt-10">
       <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Recent Purchases</h2>
 
-      <div className="relative overflow-hidden w-full rounded-lg">
-        <style>{`
-          @keyframes marquee-translate { 
-            0% { transform: translateX(0); }
-            100% { transform: translateX(-50%); }
-          }
-          .marquee-track { 
-            display: flex; 
-            gap: 1rem; 
-            align-items: stretch; 
-            animation: marquee-translate 30s linear infinite; 
-            will-change: transform;
-          }
-          .marquee-track:hover {
-            animation-play-state: paused;
-          }
-          @media (prefers-reduced-motion: reduce) {
-            .marquee-track { animation: none; }
-          }
-        `}</style>
-
-        <div className="marquee-track">
-          {transactions.map((t) => {
+      <div className="w-full rounded-lg">
+        {/* Horizontal scroll container - manual scroll instead of automatic marquee */}
+        <div className="overflow-x-auto no-scrollbar">
+          <div className="flex gap-4 py-2 px-1">
+            {transactions.map((t) => {
             if (!t.product) return null; // skip if product is missing
             const image = Array.isArray(t.product.images) && t.product.images.length > 0 
               ? t.product.images[0] 
@@ -120,6 +102,7 @@ export function SoldCarousel() {
               </div>
             );
           })}
+          </div>
         </div>
       </div>
     </div>

@@ -17,12 +17,14 @@ interface ProductModalProps {
 }
 
 export function ProductModal({ product, onClose, onInitiateTransaction }: ProductModalProps) {
-  const { user } = useAuth();
+  const { user, isProfileComplete } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [seller, setSeller] = useState<Profile | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [loadingWishlist, setLoadingWishlist] = useState(false);
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
+  const [purchaseError, setPurchaseError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -206,7 +208,7 @@ export function ProductModal({ product, onClose, onInitiateTransaction }: Produc
           </button>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6 p-6">
+                <div className="grid md:grid-cols-2 gap-6 p-6">
           <div>
             <div className="relative h-80 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden mb-4">
               <img
@@ -295,7 +297,7 @@ export function ProductModal({ product, onClose, onInitiateTransaction }: Produc
               </div>
             )}
 
-            {user && user.id !== product.seller_id && (
+            {user && user.id !== product.seller_id && product.status === 'available' && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <button
@@ -311,14 +313,32 @@ export function ProductModal({ product, onClose, onInitiateTransaction }: Produc
                     {isWishlisted ? 'Saved' : 'Save'}
                   </button>
                   <button
-                    onClick={() => {
-                      onInitiateTransaction(product.id, product.seller_id, product.price);
-                      onClose();
+                    onClick={async () => {
+                      // Check profile completeness before purchase
+                      if (!isProfileComplete) {
+                        setPurchaseError('Please complete your profile (add phone number and hostel block) before making a purchase.');
+                        return;
+                      }
+                      
+                      // await parent handler and show errors if any
+                      if (purchaseLoading) return;
+                      setPurchaseError('');
+                      setPurchaseLoading(true);
+                      try {
+                        await onInitiateTransaction(product.id, product.seller_id, product.price);
+                        // only close on success
+                        onClose();
+                      } catch (err: unknown) {
+                        console.error('Purchase error:', err);
+                        setPurchaseError('Sorry, purchase cannot be made now. Please try again later.');
+                      } finally {
+                        setPurchaseLoading(false);
+                      }
                     }}
                     className="py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
                     <ShoppingBag className="w-5 h-5" />
-                    Buy Now
+                    {purchaseLoading ? 'Processing...' : 'Buy Now'}
                   </button>
                 </div>
                 <button
@@ -328,9 +348,10 @@ export function ProductModal({ product, onClose, onInitiateTransaction }: Produc
                   <MessageCircle className="w-5 h-5" />
                   Contact Seller
                 </button>
+                {purchaseError && <p className="text-sm text-red-600">{purchaseError}</p>}
               </div>
             )}
-            {user && user.id === product.seller_id && (
+            {user && user.id === product.seller_id && product.status !== 'sold' && (
               <div className="mt-4 flex gap-3">
                 <button
                   onClick={() => setIsEditing(true)}
@@ -344,6 +365,14 @@ export function ProductModal({ product, onClose, onInitiateTransaction }: Produc
                 >
                   Mark as Sold
                 </button>
+              </div>
+            )}
+
+            {product.status === 'sold' && (
+              <div className="mt-4">
+                <span className="inline-block px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded">
+                  Sold
+                </span>
               </div>
             )}
           </div>

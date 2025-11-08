@@ -39,13 +39,31 @@ export function TransactionModal({ productId, sellerId, amount, onClose, onSucce
 
       if (transactionError) throw transactionError;
 
-      // mark product as sold regardless of payment method so it's removed from public listings
-      await (supabase.from('products') as any)
-        .update({ status: 'sold' })
-        .eq('id', productId);
+      // Send a message in chat about the purchase initiation
+      const { data: chatData, error: chatError } = await supabase
+        .from('chats')
+        .select('id')
+        .eq('product_id', productId)
+        .eq('buyer_id', user.id)
+        .single();
 
+      if (chatError) throw chatError;
+
+      const { error: messageError } = await (supabase
+        .from('messages') as any)
+        .insert({
+          chat_id: chatData?.id,
+          sender_id: user.id,
+          content: `🛍️ Purchase initiated!\nAmount: ₹${amount}\nPayment Method: ${paymentMethod === 'cod' ? 'Cash on Delivery' : 'Online Payment'}\nMeeting Location: ${meetingLocation}\n\nWaiting for seller to confirm payment.`,
+          is_read: false
+        });
+
+      if (messageError) throw messageError;
+      
+      // Only call success callback if all operations completed successfully
       onSuccess();
       onClose();
+      return;
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to create transaction');
     } finally {

@@ -47,7 +47,7 @@ Open http://localhost:5173 (Vite default) to see the frontend.
 - The frontend uses TypeScript; run `npm run typecheck` in the `Thapar` folder to run the type checker.
 
 ## requirements.txt
-- A human-readable Node dependency manifest was added as `requirements.txt` at the repo root listing the main runtime and build dependencies for both `api` and `Thapar`. This is for documentation; use `npm install` in each package folder to install actual packages.
+- A human-readable Node dependency manifest was added as `requirements.txt` at the repo root listing the main runtime and build dependencies for `Thapar`. This is for documentation; use `npm install` in each package folder to install actual packages.
 
 ## Next steps
 - Add README docs inside `Thapar/` that describe component architecture and any Supabase table mappings.
