@@ -10,6 +10,7 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
+  isProfileComplete: boolean;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -23,6 +24,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const isProfileComplete = profile ? 
+    Boolean(profile.full_name && profile.phone && profile.hostel_block) : 
+    false;
 
   useEffect(() => {
     const initAuth = async () => {
@@ -114,6 +119,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     user,
     profile,
     loading,
+    isProfileComplete,
     signUp,
     signIn,
     signOut,
