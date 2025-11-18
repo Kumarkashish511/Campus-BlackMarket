@@ -53,4 +53,4 @@ Open http://localhost:5173 (Vite default) to see the frontend.
 - Add README docs inside `Thapar/` that describe component architecture and any Supabase table mappings.
 - If you want, I can add a `dev` script to the `api/package.json` for `nodemon` and install it, or add more details to `Thapar/README.md`.
 
-# First version Campus blackmarket
+# First version Campus Blackmarket
