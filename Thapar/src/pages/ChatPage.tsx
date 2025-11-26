@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { ChatList } from '../components/Chat/ChatList';
 import { ChatWindow } from '../components/Chat/ChatWindow';
 import { MessageCircle } from 'lucide-react';
@@ -9,33 +10,34 @@ interface ChatPageProps {
 
 export function ChatPage({ onInitiateTransaction }: ChatPageProps) {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const { chatId } = useParams();
 
   useEffect(() => {
-    const hash = window.location.hash;
-    if (hash.startsWith('#chat-')) {
-      const chatId = hash.replace('#chat-', '');
+    if (chatId) {
       setSelectedChatId(chatId);
     }
-  }, []);
+  }, [chatId]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden" style={{ height: 'calc(100vh - 12rem)' }}>
           <div className="grid md:grid-cols-3 h-full">
-            <div className="md:col-span-1 border-r border-gray-200 dark:border-gray-700 overflow-y-auto">
+            {/* Chat List Sidebar */}
+            <div className={`md:col-span-1 border-r border-gray-200 dark:border-gray-700 overflow-y-auto ${selectedChatId ? 'hidden md:block' : 'block'}`}>
               <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">Messages</h2>
               </div>
               <div className="p-4">
                 <ChatList
-                  onSelectChat={setSelectedChatId}
+                  onSelectChat={(id) => setSelectedChatId(id)}
                   selectedChatId={selectedChatId}
                 />
               </div>
             </div>
 
-            <div className="md:col-span-2 hidden md:block">
+            {/* Chat Window Area */}
+            <div className={`md:col-span-2 ${selectedChatId ? 'block' : 'hidden md:block'}`}>
               {selectedChatId ? (
                 <ChatWindow
                   chatId={selectedChatId}
