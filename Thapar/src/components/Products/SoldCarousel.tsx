@@ -29,8 +29,9 @@ export function SoldCarousel() {
             seller:profiles!transactions_seller_id_fkey(full_name, avatar_url),
             product:products(*)
           `)
+          .neq('payment_status', 'failed') // Added filter to exclude failed transactions
           .order('created_at', { ascending: false })
-          .limit(20); // limit to recent 20 transactions for performance
+          .limit(20); 
 
         if (error) throw error;
         if (!mounted) return;

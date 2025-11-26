@@ -22,15 +22,7 @@ Create the following files manually (do NOT commit real secrets):
 
 ## Install & Run
 
-### API (backend)
-From project root or the `api` folder:
-```powershell
-Set-Location 'C:\Users\DELL\Desktop\campus BlackMarket\api'
-npm install
-npm run dev   # if a dev script exists (or `npm start`)
-```
-
-### Thapar (frontend)
+### Thapar
 From project root or the `Thapar` folder:
 ```powershell
 Set-Location 'C:\Users\DELL\Desktop\campus BlackMarket\Thapar'
@@ -53,4 +45,4 @@ Open http://localhost:5173 (Vite default) to see the frontend.
 - Add README docs inside `Thapar/` that describe component architecture and any Supabase table mappings.
 - If you want, I can add a `dev` script to the `api/package.json` for `nodemon` and install it, or add more details to `Thapar/README.md`.
 
-# First version Campus blackmarket
+# First version Campus Blackmarket

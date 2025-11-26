@@ -1,10 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { Send, ShoppingBag } from 'lucide-react';
+import { Send, ShoppingBag, Image as ImageIcon, Loader2 } from 'lucide-react';
 import type { Database } from '../../lib/database.types';
 
-type Message = Database['public']['Tables']['messages']['Row'];
+// Extended Message type to handle images locally even if DB types aren't fully updated in TS yet
+type Message = Database['public']['Tables']['messages']['Row'] & {
+  message_type?: 'text' | 'image' | 'transaction';
+  image_url?: string | null;
+};
+
 type Chat = Database['public']['Tables']['chats']['Row'];
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type Product = Database['public']['Tables']['products']['Row'];
@@ -22,13 +27,19 @@ export function ChatWindow({ chatId, onInitiateTransaction }: ChatWindowProps) {
   const [product, setProduct] = useState<Product | null>(null);
   const [otherUser, setOtherUser] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false); // State for image upload loading
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null); // Ref for file input
 
   useEffect(() => {
     if (chatId) {
       fetchChatDetails();
       fetchMessages();
-      subscribeToMessages();
+      const subscription = subscribeToMessages();
+      // Cleanup subscription on unmount or chatId change
+      return () => {
+        subscription.unsubscribe();
+      };
     }
   }, [chatId]);
 
@@ -104,7 +115,15 @@ export function ChatWindow({ chatId, onInitiateTransaction }: ChatWindowProps) {
         },
         (payload) => {
           const newMessage = payload.new as Message;
-          setMessages((prev) => [...prev, newMessage]);
+          
+          // FIX: Check for duplicates before adding to state
+          // This prevents the message from appearing twice since we now add it manually too
+          setMessages((prev) => {
+            if (prev.some((msg) => msg.id === newMessage.id)) {
+              return prev;
+            }
+            return [...prev, newMessage];
+          });
 
           if (newMessage.sender_id !== user?.id && user) {
             (supabase.from('messages') as any)
@@ -116,27 +135,84 @@ export function ChatWindow({ chatId, onInitiateTransaction }: ChatWindowProps) {
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return channel;
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // --- NEW: Image Upload Handler ---
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${chatId}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+
+      // 1. Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('chat-images') // Ensure this bucket exists in Supabase
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      // 2. Get Public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('chat-images')
+        .getPublicUrl(fileName);
+
+      // 3. Insert Message & Get it back immediately
+      const { data: newMessageData, error: insertError } = await (supabase.from('messages') as any)
+        .insert({
+          chat_id: chatId,
+          sender_id: user.id,
+          content: 'Sent an image', // Fallback text
+          image_url: publicUrl,
+          message_type: 'image',
+        })
+        .select()
+        .single(); // Crucial for getting ID back
+
+      if (insertError) throw insertError;
+
+      // 4. Instant State Update
+      if (newMessageData) {
+        setMessages((prev) => [...prev, newMessageData as Message]);
+      }
+
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      alert('Failed to send image. Please try again.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!user || !newMessage.trim()) return;
 
     const messageContent = newMessage.trim();
     setNewMessage('');
 
     try {
-      const { error: messageError } = await (supabase.from('messages') as any)
+      // FIX: Use .select().single() to get the message object back immediately
+      const { data: newMessageData, error: messageError } = await (supabase.from('messages') as any)
         .insert({
           chat_id: chatId,
           sender_id: user.id,
           content: messageContent,
-        });
+          message_type: 'text',
+        })
+        .select()
+        .single();
 
       if (messageError) throw messageError;
+
+      // FIX: Manually add to state for instant feedback
+      if (newMessageData) {
+        setMessages((prev) => [...prev, newMessageData as Message]);
+      }
 
       await (supabase.from('chats') as any)
         .update({
@@ -146,7 +222,7 @@ export function ChatWindow({ chatId, onInitiateTransaction }: ChatWindowProps) {
         .eq('id', chatId);
     } catch (error) {
       console.error('Error sending message:', error);
-      setNewMessage(messageContent);
+      setNewMessage(messageContent); // Restore message on failure
     }
   };
 
@@ -202,7 +278,20 @@ export function ChatWindow({ chatId, onInitiateTransaction }: ChatWindowProps) {
                     : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
                 }`}
               >
-                <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                {/* --- NEW: Logic to display Image OR Text --- */}
+                {message.message_type === 'image' && message.image_url ? (
+                  <div className="mb-1">
+                    <img 
+                      src={message.image_url} 
+                      alt="Attachment" 
+                      className="rounded-lg max-h-60 object-cover cursor-pointer hover:opacity-90"
+                      onClick={() => window.open(message.image_url!, '_blank')}
+                    />
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                )}
+                
                 <span
                   className={`text-xs mt-1 block ${
                     isSender ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
@@ -220,24 +309,47 @@ export function ChatWindow({ chatId, onInitiateTransaction }: ChatWindowProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      <form onSubmit={handleSendMessage} className="border-t border-gray-200 dark:border-gray-700 p-4">
-        <div className="flex gap-2">
+      <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+        <div className="flex gap-2 items-center">
+          {/* --- NEW: Hidden Input and Image Button --- */}
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            ref={fileInputRef}
+            onChange={handleImageUpload}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+            title="Send Image/QR"
+          >
+            {uploading ? (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            ) : (
+              <ImageIcon className="w-6 h-6" />
+            )}
+          </button>
+
           <input
             type="text"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
             placeholder="Type a message..."
             className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
           />
           <button
-            type="submit"
+            onClick={() => handleSendMessage()}
             disabled={!newMessage.trim()}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors"
           >
             <Send className="w-5 h-5" />
           </button>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

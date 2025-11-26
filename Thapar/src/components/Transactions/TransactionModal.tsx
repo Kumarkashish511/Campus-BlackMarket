@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, CreditCard, Banknote, MapPin } from 'lucide-react';
+import { X, Banknote, MapPin } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -13,7 +13,7 @@ interface TransactionModalProps {
 
 export function TransactionModal({ productId, sellerId, amount, onClose, onSuccess }: TransactionModalProps) {
   const { user } = useAuth();
-  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('cod');
+  // Removed paymentMethod state since we are strictly using COD
   const [meetingLocation, setMeetingLocation] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -26,14 +26,15 @@ export function TransactionModal({ productId, sellerId, amount, onClose, onSucce
     setLoading(true);
 
     try {
+      // Create the transaction with fixed COD values
       const { error: transactionError } = await (supabase.from('transactions') as any)
         .insert({
           product_id: productId,
           buyer_id: user.id,
           seller_id: sellerId,
           amount,
-          payment_method: paymentMethod,
-          payment_status: paymentMethod === 'cod' ? 'pending' : 'completed',
+          payment_method: 'cod',      // Hardcoded to COD
+          payment_status: 'pending',  // Hardcoded to pending for COD
           meeting_location: meetingLocation,
         });
 
@@ -47,23 +48,27 @@ export function TransactionModal({ productId, sellerId, amount, onClose, onSucce
         .eq('buyer_id', user.id)
         .single();
 
-      if (chatError) throw chatError;
-
-      const { error: messageError } = await (supabase
-        .from('messages') as any)
-        .insert({
-          chat_id: chatData?.id,
-          sender_id: user.id,
-          content: `🛍️ Purchase initiated!\nAmount: ₹${amount}\nPayment Method: ${paymentMethod === 'cod' ? 'Cash on Delivery' : 'Online Payment'}\nMeeting Location: ${meetingLocation}\n\nWaiting for seller to confirm payment.`,
-          is_read: false
-        });
-
-      if (messageError) throw messageError;
+      // If chat doesn't exist, we might need to handle it, but usually the "Buy" button is inside a chat context or creates one. 
+      // Assuming chat exists based on flow. If not, this might fail silently or throw.
+      // For robustness, you might want to create a chat if it doesn't exist, but keeping existing logic:
       
+      if (!chatError && chatData) {
+        const { error: messageError } = await (supabase
+          .from('messages') as any)
+          .insert({
+            chat_id: chatData.id,
+            sender_id: user.id,
+            // Simplified message since it's always COD
+            content: `🛍️ Purchase initiated!\nAmount: ₹${amount}\nPayment Method: Cash on Delivery\nMeeting Location: ${meetingLocation}\n\nWaiting for seller to confirm.`,
+            is_read: false
+          });
+
+        if (messageError) throw messageError;
+      }
+
       // Only call success callback if all operations completed successfully
       onSuccess();
       onClose();
-      return;
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to create transaction');
     } finally {
@@ -95,42 +100,17 @@ export function TransactionModal({ productId, sellerId, amount, onClose, onSucce
             </p>
           </div>
 
+          {/* Simplified Payment Method Display */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
               Payment Method
             </label>
-            <div className="space-y-3">
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('cod')}
-                className={`w-full p-4 border-2 rounded-lg transition-colors flex items-center gap-3 ${
-                  paymentMethod === 'cod'
-                    ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-              >
-                <Banknote className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                <div className="text-left">
-                  <p className="font-medium text-gray-900 dark:text-white">Cash on Delivery</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Pay when you meet</p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('online')}
-                className={`w-full p-4 border-2 rounded-lg transition-colors flex items-center gap-3 ${
-                  paymentMethod === 'online'
-                    ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-              >
-                <CreditCard className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                <div className="text-left">
-                  <p className="font-medium text-gray-900 dark:text-white">Online Payment</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Pay now securely</p>
-                </div>
-              </button>
+            <div className="w-full p-4 border-2 border-blue-600 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center gap-3">
+              <Banknote className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <div className="text-left">
+                <p className="font-medium text-gray-900 dark:text-white">Cash on Delivery</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Pay when you meet</p>
+              </div>
             </div>
           </div>
 
@@ -148,14 +128,6 @@ export function TransactionModal({ productId, sellerId, amount, onClose, onSucce
               placeholder="e.g., Near Library, Hostel A Block"
             />
           </div>
-
-          {paymentMethod === 'online' && (
-            <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
-              <p className="text-sm text-yellow-800 dark:text-yellow-300">
-                Demo: Payment gateway integration will mark this as paid immediately
-              </p>
-            </div>
-          )}
 
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
