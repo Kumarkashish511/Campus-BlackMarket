@@ -22,15 +22,7 @@ Create the following files manually (do NOT commit real secrets):
 
 ## Install & Run
 
-### API (backend)
-From project root or the `api` folder:
-```powershell
-Set-Location 'C:\Users\DELL\Desktop\campus BlackMarket\api'
-npm install
-npm run dev   # if a dev script exists (or `npm start`)
-```
-
-### Thapar (frontend)
+### Thapar
 From project root or the `Thapar` folder:
 ```powershell
 Set-Location 'C:\Users\DELL\Desktop\campus BlackMarket\Thapar'
